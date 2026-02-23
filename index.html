@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Хронолента выдающихся людей</title>
+    <meta
+      name="description"
+      content="Интерактивная временная шкала ученых и известных людей с датами жизни и ключевыми достижениями."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="./supabase-config.js" defer></script>
+    <script src="./data-service.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#timeline-region">Перейти к шкале времени</a>
+    <div class="bg-grid parallax-layer" aria-hidden="true" data-parallax-depth="0.18"></div>
+    <div class="bg-shape bg-shape-one parallax-layer" aria-hidden="true" data-parallax-depth="1.25"></div>
+    <div class="bg-shape bg-shape-two parallax-layer" aria-hidden="true" data-parallax-depth="-0.95"></div>
+    <div class="bg-shape bg-shape-three parallax-layer" aria-hidden="true" data-parallax-depth="0.65"></div>
+
+    <header class="hero">
+      <p class="eyebrow">История в одном экране</p>
+      <h1>Хронолента выдающихся людей</h1>
+      <p class="hero-copy">
+        Нажмите на любую персону на шкале, чтобы увидеть краткую справку и
+        ключевые достижения.
+      </p>
+      <div class="hero-tags" aria-label="Преимущества">
+        <span class="hero-tag">Интерактивный таймлайн</span>
+        <span class="hero-tag">Фильтры и быстрый поиск</span>
+        <span class="hero-tag">Карточки с достижениями</span>
+        <a class="hero-tag hero-link" href="./admin.html">Админка персон</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel controls-panel" aria-label="Фильтры">
+        <div class="controls">
+          <label class="field">
+            <span>Поиск</span>
+            <input
+              id="search-input"
+              type="search"
+              placeholder="Например: Эйнштейн, Кюри, Толстой"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+
+        <p class="stats">
+          Показано персон: <strong id="results-count">0</strong>
+          <span class="note"
+            >База демонстрационная: можно дополнять в файле `app.js`.</span
+          >
+          <span class="note" id="data-source-note"></span>
+        </p>
+      </section>
+
+      <section
+        class="panel timeline-panel"
+        id="timeline-region"
+        aria-label="Интерактивная шкала времени"
+      >
+        <div class="timeline-layout">
+          <div class="timeline-main">
+            <div class="timeline-header">
+              <div class="timeline-headline">
+                <h2>Шкала Эпох</h2>
+                <p>
+                  Горизонтальная лента показывает, кто жил одновременно.
+                  Выберите персону или перейдите к нужной эпохе.
+                </p>
+              </div>
+              <label class="zoom-control" for="zoom-range">
+                <span>Масштаб</span>
+                <input
+                  id="zoom-range"
+                  type="range"
+                  min="90"
+                  max="280"
+                  step="10"
+                  value="140"
+                />
+              </label>
+            </div>
+
+            <div class="era-pills" id="era-pills" aria-label="Переход по эпохам"></div>
+            <div class="legend" id="legend"></div>
+            <p class="timeline-readout" id="timeline-readout" aria-live="polite"></p>
+
+            <div class="timeline-shell">
+              <div class="timeline-viewport" id="timeline-viewport">
+                <div class="axis" id="timeline-axis" aria-hidden="true"></div>
+                <div class="lanes" id="timeline-lanes" role="list"></div>
+              </div>
+              <div class="timeline-fade timeline-fade-left" aria-hidden="true"></div>
+              <div class="timeline-fade timeline-fade-right" aria-hidden="true"></div>
+            </div>
+            <p class="hint">
+              Подсказка: используйте <kbd>Shift</kbd> + колесо мыши или тачпад
+              для горизонтальной прокрутки.
+            </p>
+          </div>
+
+          <aside class="details-panel" aria-live="polite">
+            <h2 class="details-title">Информация о персоне</h2>
+            <article id="person-details" class="details-card empty">
+              <p>Выберите человека на временной шкале.</p>
+            </article>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

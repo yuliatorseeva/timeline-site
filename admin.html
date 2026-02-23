@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Админка персон | Хронолента</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="./supabase-config.js" defer></script>
+    <script src="./data-service.js" defer></script>
+    <script src="./admin.js" defer></script>
+  </head>
+  <body>
+    <main class="admin-layout">
+      <header class="admin-header panel">
+        <div>
+          <p class="eyebrow">Панель управления</p>
+          <h1>Персоны хроноленты</h1>
+          <p class="hero-copy">
+            Добавляйте и удаляйте персон через интерфейс. Изменения сохраняются
+            в Supabase или локально (если Supabase не настроен).
+          </p>
+        </div>
+        <a class="hero-tag hero-link" href="./index.html">Назад к шкале</a>
+      </header>
+
+      <section class="panel admin-auth">
+        <h2>Доступ администратора</h2>
+        <p id="auth-status" class="admin-note"></p>
+        <form id="login-form" class="auth-form">
+          <label class="field">
+            <span>Email</span>
+            <input id="login-email" type="email" placeholder="admin@example.com" />
+          </label>
+          <label class="field">
+            <span>Пароль</span>
+            <input id="login-password" type="password" placeholder="••••••••" />
+          </label>
+          <div class="auth-actions">
+            <button class="admin-btn" type="submit">Войти</button>
+            <button class="admin-btn secondary" id="logout-btn" type="button">
+              Выйти
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel admin-editor">
+        <div class="editor-header">
+          <h2 id="editor-title">Добавить персону</h2>
+          <span id="storage-mode" class="chip"></span>
+        </div>
+
+        <form id="person-form" class="editor-grid">
+          <label class="field">
+            <span>ID (slug)</span>
+            <input id="person-id" type="text" placeholder="einstein" />
+          </label>
+
+          <label class="field">
+            <span>Имя</span>
+            <input id="person-name" type="text" required />
+          </label>
+
+          <label class="field">
+            <span>Категория</span>
+            <select id="person-category" required></select>
+          </label>
+
+          <label class="field">
+            <span>Год рождения</span>
+            <input id="birth-year" type="number" required />
+          </label>
+
+          <label class="field">
+            <span>Год смерти</span>
+            <input id="death-year" type="number" />
+          </label>
+
+          <label class="field checkbox-field">
+            <input id="is-living" type="checkbox" />
+            <span>Жив(а) сейчас</span>
+          </label>
+
+          <label class="field">
+            <span>Дата рождения (текст)</span>
+            <input id="birth-date" type="text" placeholder="1879" />
+          </label>
+
+          <label class="field">
+            <span>Дата смерти (текст)</span>
+            <input id="death-date" type="text" placeholder="1955 или по н.в." />
+          </label>
+
+          <label class="field editor-full">
+            <span>Краткое описание</span>
+            <textarea id="person-summary" rows="3" required></textarea>
+          </label>
+
+          <label class="field editor-full">
+            <span>Достижения (по одному на строку)</span>
+            <textarea id="person-achievements" rows="4" required></textarea>
+          </label>
+
+          <label class="field editor-full">
+            <span>Заголовок Wikipedia (опционально)</span>
+            <input id="wiki-title" type="text" placeholder="Эйнштейн, Альберт" />
+          </label>
+
+          <div class="editor-actions editor-full">
+            <button class="admin-btn" id="save-btn" type="submit">Сохранить</button>
+            <button class="admin-btn secondary" id="reset-btn" type="button">
+              Сбросить
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel admin-list">
+        <div class="list-header">
+          <h2>Список персон</h2>
+          <label class="field list-search">
+            <span>Поиск в списке</span>
+            <input id="list-search" type="search" placeholder="Имя или id" />
+          </label>
+        </div>
+        <p id="list-meta" class="admin-note"></p>
+        <div class="table-wrap">
+          <table class="people-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Имя</th>
+                <th>Категория</th>
+                <th>Годы</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody id="people-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="admin-message" class="admin-message" aria-live="polite"></p>
+    </main>
+  </body>
+</html>
