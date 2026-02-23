@@ -56,6 +56,9 @@
    - `/scale/supabase-config.example.js`
    - в `/scale/supabase-config.js`
 6. Заполните `url` и `anonKey`.
+7. Для загрузки фото создайте Storage bucket `people-photos` (public).
+8. В SQL Editor добавьте policy для загрузки админом:
+   - `create policy "Admin upload photos" on storage.objects for insert to authenticated with check (bucket_id = 'people-photos' and exists (select 1 from public.admin_users a where a.user_id = auth.uid()));`
 
 После этого:
 

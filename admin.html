@@ -159,6 +159,21 @@
             />
           </label>
 
+          <div class="field editor-full photo-upload-block">
+            <span>Загрузить фото</span>
+            <div class="photo-upload-row">
+              <input id="photo-file" type="file" accept="image/*" />
+              <button class="admin-btn secondary" id="upload-photo-btn" type="button">
+                <span class="btn-label">Загрузить файл</span>
+                <span class="btn-spinner" aria-hidden="true"></span>
+              </button>
+            </div>
+            <small id="photo-upload-hint" class="category-hint"></small>
+            <div class="photo-preview-wrap" id="photo-preview-wrap" hidden>
+              <img id="photo-preview" class="photo-preview" alt="Превью фото" />
+            </div>
+          </div>
+
           <div class="editor-actions editor-full">
             <button class="admin-btn" id="save-btn" type="submit">
               <span class="btn-label">Сохранить</span>

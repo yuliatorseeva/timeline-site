@@ -41,6 +41,11 @@ const summaryInput = document.querySelector("#person-summary");
 const achievementsInput = document.querySelector("#person-achievements");
 const wikiTitleInput = document.querySelector("#wiki-title");
 const photoUrlInput = document.querySelector("#photo-url");
+const photoFileInput = document.querySelector("#photo-file");
+const uploadPhotoButton = document.querySelector("#upload-photo-btn");
+const photoUploadHint = document.querySelector("#photo-upload-hint");
+const photoPreviewWrap = document.querySelector("#photo-preview-wrap");
+const photoPreview = document.querySelector("#photo-preview");
 const newCategoryNameInput = document.querySelector("#new-category-name");
 const addCategoryButton = document.querySelector("#add-category-btn");
 const newCategoryHint = document.querySelector("#new-category-hint");
@@ -61,7 +66,9 @@ const state = {
   loginPending: false,
   savePending: false,
   logoutPending: false,
-  categoryPending: false
+  categoryPending: false,
+  photoUploadPending: false,
+  photoPreviewObjectUrl: null
 };
 
 function showMessage(text, kind = "info") {
@@ -89,7 +96,8 @@ function setLoginPending(isPending) {
 
 function updateEditorControlsState() {
   if (!personForm) return;
-  const shouldDisable = state.savePending || state.logoutPending || state.categoryPending || !canMutate();
+  const shouldDisable =
+    state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending || !canMutate();
   const controls = personForm.querySelectorAll("input, textarea, select, button");
   controls.forEach((control) => {
     control.disabled = shouldDisable;
@@ -128,7 +136,83 @@ function setCategoryActionPending(isPending) {
 }
 
 function isUiLocked() {
-  return state.loginPending || state.savePending || state.logoutPending || state.categoryPending;
+  return state.loginPending || state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending;
+}
+
+function clearPhotoPreviewObjectUrl() {
+  if (!state.photoPreviewObjectUrl) return;
+  URL.revokeObjectURL(state.photoPreviewObjectUrl);
+  state.photoPreviewObjectUrl = null;
+}
+
+function setPhotoUploadHint(text = "", isError = false) {
+  if (!photoUploadHint) return;
+  photoUploadHint.textContent = text;
+  photoUploadHint.style.color = isError ? "#8d2d20" : "";
+}
+
+function setPhotoPreview(url = "") {
+  if (!photoPreview || !photoPreviewWrap) return;
+  const cleanUrl = String(url || "").trim();
+  if (!cleanUrl) {
+    photoPreview.removeAttribute("src");
+    photoPreviewWrap.hidden = true;
+    return;
+  }
+  photoPreview.src = cleanUrl;
+  photoPreviewWrap.hidden = false;
+}
+
+function setPhotoUploadPending(isPending) {
+  state.photoUploadPending = isPending;
+  if (uploadPhotoButton) {
+    uploadPhotoButton.classList.toggle("is-loading", isPending);
+    uploadPhotoButton.disabled = isPending;
+  }
+  if (photoFileInput) {
+    photoFileInput.disabled = isPending;
+  }
+  updateEditorControlsState();
+  renderTable();
+  renderCategoryManager();
+}
+
+function resetPhotoUploadPending() {
+  state.photoUploadPending = false;
+  if (uploadPhotoButton) {
+    uploadPhotoButton.classList.remove("is-loading");
+    uploadPhotoButton.disabled = false;
+  }
+  if (photoFileInput) {
+    photoFileInput.disabled = false;
+  }
+}
+
+function getPhotoUploadSlugHint() {
+  if (state.editingId) return state.editingId;
+  const name = nameInput?.value?.trim() || "";
+  return generateUniquePersonId(name || "person");
+}
+
+async function uploadSelectedPhotoFile() {
+  const file = photoFileInput?.files?.[0];
+  if (!file) throw new Error("Выберите файл изображения.");
+  if (!service?.uploadPhoto) throw new Error("Сервис загрузки фото недоступен.");
+
+  const slugHint = getPhotoUploadSlugHint();
+  const uploaded = await service.uploadPhoto(file, slugHint);
+  const url = String(uploaded?.url || "").trim();
+  if (!url) throw new Error("Загрузка завершилась без URL.");
+
+  photoUrlInput.value = url;
+  clearPhotoPreviewObjectUrl();
+  setPhotoPreview(url);
+  if (photoFileInput) {
+    photoFileInput.value = "";
+  }
+  const sourceLabel = uploaded?.source === "inline" ? "localStorage" : "Supabase Storage";
+  setPhotoUploadHint(`Файл загружен (${sourceLabel}). URL обновлен.`);
+  return url;
 }
 
 function slugify(text) {
@@ -312,6 +396,10 @@ function resetForm() {
   categoryInput.value = getDefaultCategoryId();
   if (newCategoryNameInput) newCategoryNameInput.value = "";
   if (newCategoryHint) newCategoryHint.textContent = "";
+  if (photoFileInput) photoFileInput.value = "";
+  clearPhotoPreviewObjectUrl();
+  setPhotoPreview("");
+  setPhotoUploadHint("");
   syncLivingFields();
 }
 
@@ -441,6 +529,10 @@ function fillForm(person) {
   achievementsInput.value = Array.isArray(person.achievements) ? person.achievements.join("\n") : "";
   wikiTitleInput.value = person.wikiTitle || "";
   photoUrlInput.value = person.photoUrl || "";
+  if (photoFileInput) photoFileInput.value = "";
+  clearPhotoPreviewObjectUrl();
+  setPhotoPreview(person.photoUrl || "");
+  setPhotoUploadHint("");
   syncLivingFields();
 }
 
@@ -461,6 +553,19 @@ function applySearch(people) {
     const combined = `${person.id} ${person.name} ${person.category} ${categoryLabel}`.toLowerCase();
     return combined.includes(query);
   });
+}
+
+function upsertPersonInState(savedPerson, originalId = null) {
+  if (!savedPerson || !savedPerson.id) return;
+  const previousId = originalId || savedPerson.id;
+  const next = state.people
+    .filter((person) => person.id !== previousId && person.id !== savedPerson.id)
+    .concat(savedPerson)
+    .sort((first, second) => first.birthYear - second.birthYear);
+  state.people = next;
+  mergeCategoriesFromPeople(state.people);
+  renderTable();
+  renderCategoryManager();
 }
 
 function renderTable() {
@@ -731,6 +836,7 @@ function renderAuthState() {
     setLoginPending(false);
     setSavePending(false);
     setLogoutPending(false);
+    resetPhotoUploadPending();
     state.categoryPending = false;
     authStatus.textContent = "Ошибка: data-service.js не загружен.";
     loginForm.querySelectorAll("input, button").forEach((node) => {
@@ -751,6 +857,7 @@ function renderAuthState() {
     setLoginPending(false);
     setSavePending(false);
     setLogoutPending(false);
+    resetPhotoUploadPending();
     state.categoryPending = false;
     authStatus.textContent = "Supabase не настроен. Доступен только локальный режим.";
     loginForm.querySelectorAll("input, button").forEach((node) => {
@@ -774,6 +881,7 @@ function renderAuthState() {
     setLoginPending(false);
     setSavePending(false);
     setLogoutPending(false);
+    resetPhotoUploadPending();
     state.categoryPending = false;
     authStatus.textContent = `Вход выполнен: ${state.session.user.email}`;
     sessionLabel.textContent = `Вы вошли как ${state.session.user.email}`;
@@ -785,6 +893,7 @@ function renderAuthState() {
   } else {
     setSavePending(false);
     setLogoutPending(false);
+    resetPhotoUploadPending();
     state.categoryPending = false;
     authStatus.textContent = "Не авторизован. Для записи в Supabase войдите в админку.";
     loginPanel.classList.remove("is-hidden");
@@ -832,6 +941,53 @@ function bindEvents() {
     state.listQuery = event.currentTarget.value;
     renderTable();
   });
+
+  photoUrlInput.addEventListener("input", (event) => {
+    const url = String(event.currentTarget.value || "").trim();
+    clearPhotoPreviewObjectUrl();
+    setPhotoPreview(url);
+    if (url) {
+      setPhotoUploadHint("Используется URL из поля фото.");
+    } else {
+      setPhotoUploadHint("");
+    }
+  });
+
+  if (photoFileInput) {
+    photoFileInput.addEventListener("change", () => {
+      const file = photoFileInput.files?.[0];
+      clearPhotoPreviewObjectUrl();
+      if (!file) {
+        setPhotoPreview(photoUrlInput.value);
+        setPhotoUploadHint("");
+        return;
+      }
+      const objectUrl = URL.createObjectURL(file);
+      state.photoPreviewObjectUrl = objectUrl;
+      setPhotoPreview(objectUrl);
+      setPhotoUploadHint(`Выбран файл: ${file.name}. Нажмите "Загрузить файл" или просто "Сохранить".`);
+    });
+  }
+
+  if (uploadPhotoButton) {
+    uploadPhotoButton.addEventListener("click", async () => {
+      if (isUiLocked()) return;
+      if (!canMutate()) {
+        showMessage("Для загрузки фото нужен вход администратора.", "error");
+        return;
+      }
+      try {
+        setPhotoUploadPending(true);
+        await uploadSelectedPhotoFile();
+        showMessage("Фото успешно загружено.");
+      } catch (error) {
+        setPhotoUploadHint(error.message || "Не удалось загрузить фото.", true);
+        showMessage(error.message || "Не удалось загрузить фото.", "error");
+      } finally {
+        setPhotoUploadPending(false);
+      }
+    });
+  }
 
   if (newCategoryNameInput && newCategoryHint) {
     newCategoryNameInput.addEventListener("input", (event) => {
@@ -888,7 +1044,7 @@ function bindEvents() {
   });
 
   logoutButton.addEventListener("click", async () => {
-    if (state.logoutPending || state.savePending || state.categoryPending) return;
+    if (state.logoutPending || state.savePending || state.categoryPending || state.photoUploadPending) return;
     try {
       setLogoutPending(true);
       await service.logout();
@@ -904,7 +1060,7 @@ function bindEvents() {
 
   personForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (state.savePending || state.logoutPending || state.categoryPending) return;
+    if (state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending) return;
 
     if (!canMutate()) {
       showMessage("Для сохранения в Supabase требуется вход администратора.", "error");
@@ -913,16 +1069,29 @@ function bindEvents() {
 
     try {
       setSavePending(true);
+      if (photoFileInput?.files?.length) {
+        setPhotoUploadPending(true);
+        try {
+          await uploadSelectedPhotoFile();
+        } finally {
+          setPhotoUploadPending(false);
+        }
+      }
       const payload = collectPersonFromForm();
+      const originalId = state.editingId;
+      let savedPerson = null;
       if (state.editingId) {
-        await service.updatePerson(state.editingId, payload);
+        savedPerson = await service.updatePerson(state.editingId, payload);
         showMessage(`Персона обновлена: ${payload.name}`);
       } else {
-        await service.createPerson(payload);
+        savedPerson = await service.createPerson(payload);
         showMessage(`Персона добавлена: ${payload.name}`);
       }
-      await loadPeople();
+      upsertPersonInState(savedPerson, originalId);
       resetForm();
+      void loadPeople().catch(() => {
+        // Keep UI responsive; background sync failures will be handled on next action.
+      });
     } catch (error) {
       showMessage(error.message || "Не удалось сохранить персону.", "error");
     } finally {

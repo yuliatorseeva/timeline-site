@@ -4,6 +4,7 @@
   const STORAGE_KEY = "timeline_people_cache_v1";
   const PHOTO_OVERRIDES_STORAGE_KEY = "timeline_photo_overrides_v1";
   const DEFAULT_TABLE_NAME = "people";
+  const REQUEST_TIMEOUT_MS = 15000;
   const CURRENT_YEAR = new Date().getFullYear();
   let cachedClient = null;
   let hasPhotoUrlColumn = null;
@@ -22,6 +23,11 @@
     return config.tableName || DEFAULT_TABLE_NAME;
   }
 
+  function getPhotoBucketName() {
+    const config = getConfig();
+    return config.photoBucket || "people-photos";
+  }
+
   function getSupabaseClient() {
     if (cachedClient) return cachedClient;
     if (!isSupabaseConfigured() || !global.supabase?.createClient) return null;
@@ -36,6 +42,19 @@
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, "-")
       .replace(/^-+|-+$/g, "");
+  }
+
+  function withTimeout(promise, message, timeoutMs = REQUEST_TIMEOUT_MS) {
+    let timeoutId = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = global.setTimeout(() => {
+        reject(new Error(message || "Превышено время ожидания ответа сервера."));
+      }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timeoutId) global.clearTimeout(timeoutId);
+    });
   }
 
   function extractSurname(name) {
@@ -79,6 +98,45 @@
   function parsePhotoUrl(value) {
     const text = String(value || "").trim();
     return text || undefined;
+  }
+
+  function getFileExtension(filename, mimeType = "") {
+    const safeName = String(filename || "").trim().toLowerCase();
+    const dotIndex = safeName.lastIndexOf(".");
+    if (dotIndex > -1 && dotIndex < safeName.length - 1) {
+      const ext = safeName.slice(dotIndex + 1).replace(/[^a-z0-9]/g, "");
+      if (ext) return ext;
+    }
+    const mime = String(mimeType || "").toLowerCase();
+    if (mime.includes("jpeg")) return "jpg";
+    if (mime.includes("png")) return "png";
+    if (mime.includes("webp")) return "webp";
+    if (mime.includes("gif")) return "gif";
+    return "jpg";
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Не удалось прочитать файл изображения."));
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function toFriendlyStorageError(error) {
+    if (!error) return new Error("Неизвестная ошибка хранилища.");
+    const message = String(error.message || "");
+    const normalized = message.toLowerCase();
+    if (normalized.includes("bucket") && normalized.includes("not")) {
+      return new Error(
+        `Не найден Storage bucket "${getPhotoBucketName()}". Создайте bucket в Supabase Storage и сделайте его public.`
+      );
+    }
+    if (normalized.includes("row-level security") || normalized.includes("permission")) {
+      return new Error("Нет прав на загрузку файла в Supabase Storage. Проверьте policy для bucket.");
+    }
+    return error;
   }
 
   function readPhotoOverrides() {
@@ -145,6 +203,24 @@
     const hint = String(error?.hint || "").toLowerCase();
     const text = `${message} ${details} ${hint}`;
     return text.includes("photo_url") && (text.includes("column") || text.includes("schema cache"));
+  }
+
+  function toFriendlyDbError(error) {
+    if (!error) return new Error("Неизвестная ошибка базы данных.");
+    const code = String(error.code || "");
+    if (code === "42501") {
+      const friendly = new Error(
+        "Нет прав на запись в таблицу people. Добавьте пользователя в public.admin_users в Supabase SQL Editor."
+      );
+      friendly.code = code;
+      return friendly;
+    }
+    if (code === "23505") {
+      const friendly = new Error("Запись с таким ID уже существует.");
+      friendly.code = code;
+      return friendly;
+    }
+    return error;
   }
 
   function normalizePerson(rawInput) {
@@ -253,7 +329,10 @@
   }
 
   async function ensureAdminSession(client) {
-    const { data, error } = await client.auth.getSession();
+    const { data, error } = await withTimeout(
+      client.auth.getSession(),
+      "Не удалось проверить сессию администратора (таймаут)."
+    );
     if (error) throw error;
     if (!data?.session) throw new Error("Требуется вход администратора.");
     return data.session;
@@ -272,10 +351,13 @@
     }
 
     try {
-      const { data, error } = await client
-        .from(getTableName())
-        .select("*")
-        .order("birth_year", { ascending: true });
+      const { data, error } = await withTimeout(
+        client
+          .from(getTableName())
+          .select("*")
+          .order("birth_year", { ascending: true }),
+        "Не удалось загрузить список персон (таймаут)."
+      );
 
       if (error) throw error;
       const fetchedRaw = Array.isArray(data) ? data.map(personFromDbRow).filter(Boolean) : [];
@@ -299,6 +381,49 @@
     return result.people;
   }
 
+  async function uploadPhoto(file, personSlugHint = "person") {
+    if (!file) throw new Error("Файл изображения не выбран.");
+    const sizeMb = Number(file.size || 0) / (1024 * 1024);
+    if (sizeMb > 5) {
+      throw new Error("Слишком большой файл. Максимум 5 MB.");
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      if (sizeMb > 1.5) {
+        throw new Error("В локальном режиме максимальный размер фото 1.5 MB.");
+      }
+      const dataUrl = await readFileAsDataUrl(file);
+      return { url: dataUrl, source: "inline" };
+    }
+
+    await ensureAdminSession(client);
+    const bucket = getPhotoBucketName();
+    const extension = getFileExtension(file.name, file.type);
+    const slug = slugify(personSlugHint) || "person";
+    const randomPart = Math.random().toString(36).slice(2, 8);
+    const path = `${slug}/${Date.now()}-${randomPart}.${extension}`;
+
+    const uploadResponse = await withTimeout(
+      client.storage.from(bucket).upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || undefined
+      }),
+      "Не удалось загрузить фото (таймаут)."
+    );
+
+    if (uploadResponse.error) throw toFriendlyStorageError(uploadResponse.error);
+
+    const publicResult = client.storage.from(bucket).getPublicUrl(path);
+    const publicUrl = String(publicResult?.data?.publicUrl || "").trim();
+    if (!publicUrl) {
+      throw new Error("Фото загружено, но не удалось получить публичный URL.");
+    }
+
+    return { url: publicUrl, source: "supabase", path, bucket };
+  }
+
   async function createPerson(rawPerson) {
     const normalized = normalizePerson(rawPerson);
     if (!normalized || !normalized.name || !normalized.summary) {
@@ -318,13 +443,19 @@
 
     await ensureAdminSession(client);
     let payload = dbRowFromPerson(normalized);
-    let response = await client.from(getTableName()).insert(payload).select("*").single();
+    let response = await withTimeout(
+      client.from(getTableName()).insert(payload).select("*").single(),
+      "Не удалось сохранить персону (таймаут)."
+    );
     if (response.error && isMissingPhotoUrlColumnError(response.error)) {
       hasPhotoUrlColumn = false;
       payload = dbRowFromPerson(normalized);
-      response = await client.from(getTableName()).insert(payload).select("*").single();
+      response = await withTimeout(
+        client.from(getTableName()).insert(payload).select("*").single(),
+        "Не удалось сохранить персону после повторной попытки (таймаут)."
+      );
     }
-    if (response.error) throw response.error;
+    if (response.error) throw toFriendlyDbError(response.error);
     if (hasPhotoUrlColumn !== false) hasPhotoUrlColumn = true;
 
     const saved = personFromDbRow(response.data);
@@ -351,23 +482,29 @@
 
     await ensureAdminSession(client);
     let payload = dbRowFromPerson(normalized);
-    let response = await client
-      .from(getTableName())
-      .update(payload)
-      .eq("slug", originalId)
-      .select("*")
-      .single();
-    if (response.error && isMissingPhotoUrlColumnError(response.error)) {
-      hasPhotoUrlColumn = false;
-      payload = dbRowFromPerson(normalized);
-      response = await client
+    let response = await withTimeout(
+      client
         .from(getTableName())
         .update(payload)
         .eq("slug", originalId)
         .select("*")
-        .single();
+        .single(),
+      "Не удалось обновить персону (таймаут)."
+    );
+    if (response.error && isMissingPhotoUrlColumnError(response.error)) {
+      hasPhotoUrlColumn = false;
+      payload = dbRowFromPerson(normalized);
+      response = await withTimeout(
+        client
+          .from(getTableName())
+          .update(payload)
+          .eq("slug", originalId)
+          .select("*")
+          .single(),
+        "Не удалось обновить персону после повторной попытки (таймаут)."
+      );
     }
-    if (response.error) throw response.error;
+    if (response.error) throw toFriendlyDbError(response.error);
     if (hasPhotoUrlColumn !== false) hasPhotoUrlColumn = true;
 
     const saved = personFromDbRow(response.data);
@@ -390,8 +527,11 @@
     }
 
     await ensureAdminSession(client);
-    const { error } = await client.from(getTableName()).delete().eq("slug", id);
-    if (error) throw error;
+    const { error } = await withTimeout(
+      client.from(getTableName()).delete().eq("slug", id),
+      "Не удалось удалить персону (таймаут)."
+    );
+    if (error) throw toFriendlyDbError(error);
     writeLocalPeople(local.filter((person) => person.id !== id));
     removePhotoOverride(id);
   }
@@ -399,7 +539,10 @@
   async function login(email, password) {
     const client = getSupabaseClient();
     if (!client) throw new Error("Supabase не настроен.");
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    const { data, error } = await withTimeout(
+      client.auth.signInWithPassword({ email, password }),
+      "Не удалось выполнить вход (таймаут)."
+    );
     if (error) throw error;
     return data;
   }
@@ -407,14 +550,20 @@
   async function logout() {
     const client = getSupabaseClient();
     if (!client) return;
-    const { error } = await client.auth.signOut();
+    const { error } = await withTimeout(
+      client.auth.signOut(),
+      "Не удалось выполнить выход (таймаут)."
+    );
     if (error) throw error;
   }
 
   async function getSession() {
     const client = getSupabaseClient();
     if (!client) return null;
-    const { data, error } = await client.auth.getSession();
+    const { data, error } = await withTimeout(
+      client.auth.getSession(),
+      "Не удалось получить сессию (таймаут)."
+    );
     if (error) throw error;
     return data?.session || null;
   }
@@ -431,6 +580,7 @@
     getTableName,
     fetchPeople,
     listPeople,
+    uploadPhoto,
     createPerson,
     updatePerson,
     deletePerson,
