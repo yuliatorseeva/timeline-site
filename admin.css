@@ -111,6 +111,12 @@
   margin-bottom: 0.8rem;
 }
 
+.editor-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
 .chip {
   display: inline-block;
   border: 1px solid #c7d3cc;
@@ -339,6 +345,12 @@
 }
 
 @media (max-width: 900px) {
+  .editor-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
   .auth-form,
   .editor-grid {
     grid-template-columns: 1fr;

@@ -13,6 +13,7 @@ const CATEGORY_STORAGE_KEY = "timeline_categories_v1";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const service = window.TimelineDataService;
+const SEED_PEOPLE = Array.isArray(window.TIMELINE_SEED_PEOPLE) ? window.TIMELINE_SEED_PEOPLE : [];
 
 const authStatus = document.querySelector("#auth-status");
 const authError = document.querySelector("#auth-error");
@@ -26,6 +27,7 @@ const adminEditorSection = document.querySelector("#admin-editor");
 
 const editorTitle = document.querySelector("#editor-title");
 const storageModeNode = document.querySelector("#storage-mode");
+const syncSeedButton = document.querySelector("#sync-seed-btn");
 const personForm = document.querySelector("#person-form");
 const resetButton = document.querySelector("#reset-btn");
 const saveButton = document.querySelector("#save-btn");
@@ -68,6 +70,7 @@ const state = {
   logoutPending: false,
   categoryPending: false,
   photoUploadPending: false,
+  syncSeedPending: false,
   photoPreviewObjectUrl: null
 };
 
@@ -90,19 +93,43 @@ function setLoginPending(isPending) {
   const passwordInput = document.querySelector("#login-password");
   if (emailInput) emailInput.disabled = isPending;
   if (passwordInput) passwordInput.disabled = isPending;
+  updateEditorControlsState();
   renderTable();
   renderCategoryManager();
+}
+
+function updateSyncSeedButtonState() {
+  if (!syncSeedButton) return;
+  const supabaseConfigured =
+    typeof service?.isSupabaseConfigured === "function" && service.isSupabaseConfigured();
+  const shouldDisable =
+    state.loginPending ||
+    state.savePending ||
+    state.logoutPending ||
+    state.categoryPending ||
+    state.photoUploadPending ||
+    state.syncSeedPending ||
+    !supabaseConfigured ||
+    !canMutate() ||
+    !SEED_PEOPLE.length;
+  syncSeedButton.disabled = shouldDisable;
 }
 
 function updateEditorControlsState() {
   if (!personForm) return;
   const shouldDisable =
-    state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending || !canMutate();
+    state.savePending ||
+    state.logoutPending ||
+    state.categoryPending ||
+    state.photoUploadPending ||
+    state.syncSeedPending ||
+    !canMutate();
   const controls = personForm.querySelectorAll("input, textarea, select, button");
   controls.forEach((control) => {
     control.disabled = shouldDisable;
   });
   if (!shouldDisable) syncLivingFields();
+  updateSyncSeedButtonState();
 }
 
 function setSavePending(isPending) {
@@ -136,7 +163,14 @@ function setCategoryActionPending(isPending) {
 }
 
 function isUiLocked() {
-  return state.loginPending || state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending;
+  return (
+    state.loginPending ||
+    state.savePending ||
+    state.logoutPending ||
+    state.categoryPending ||
+    state.photoUploadPending ||
+    state.syncSeedPending
+  );
 }
 
 function clearPhotoPreviewObjectUrl() {
@@ -186,6 +220,15 @@ function resetPhotoUploadPending() {
   if (photoFileInput) {
     photoFileInput.disabled = false;
   }
+  updateSyncSeedButtonState();
+}
+
+function setSyncSeedPending(isPending) {
+  state.syncSeedPending = isPending;
+  if (syncSeedButton) {
+    syncSeedButton.classList.toggle("is-loading", isPending);
+  }
+  updateEditorControlsState();
 }
 
 function getPhotoUploadSlugHint() {
@@ -539,6 +582,7 @@ function fillForm(person) {
 function setStorageMode(source) {
   const map = {
     supabase: "Источник: Supabase",
+    "supabase-error": "Источник: Supabase (ошибка загрузки)",
     local: "Источник: localStorage",
     seed: "Источник: встроенный набор"
   };
@@ -837,6 +881,7 @@ function renderAuthState() {
     setSavePending(false);
     setLogoutPending(false);
     resetPhotoUploadPending();
+    setSyncSeedPending(false);
     state.categoryPending = false;
     authStatus.textContent = "Ошибка: data-service.js не загружен.";
     loginForm.querySelectorAll("input, button").forEach((node) => {
@@ -858,6 +903,7 @@ function renderAuthState() {
     setSavePending(false);
     setLogoutPending(false);
     resetPhotoUploadPending();
+    setSyncSeedPending(false);
     state.categoryPending = false;
     authStatus.textContent = "Supabase не настроен. Доступен только локальный режим.";
     loginForm.querySelectorAll("input, button").forEach((node) => {
@@ -882,6 +928,7 @@ function renderAuthState() {
     setSavePending(false);
     setLogoutPending(false);
     resetPhotoUploadPending();
+    setSyncSeedPending(false);
     state.categoryPending = false;
     authStatus.textContent = `Вход выполнен: ${state.session.user.email}`;
     sessionLabel.textContent = `Вы вошли как ${state.session.user.email}`;
@@ -894,6 +941,7 @@ function renderAuthState() {
     setSavePending(false);
     setLogoutPending(false);
     resetPhotoUploadPending();
+    setSyncSeedPending(false);
     state.categoryPending = false;
     authStatus.textContent = "Не авторизован. Для записи в Supabase войдите в админку.";
     loginPanel.classList.remove("is-hidden");
@@ -919,12 +967,26 @@ async function refreshSession() {
 
 async function loadPeople() {
   if (!service) return;
-  const result = await service.fetchPeople([]);
+  const strictSupabaseMode =
+    typeof service.isSupabaseConfigured === "function" && service.isSupabaseConfigured();
+  let result = { people: [], source: "seed" };
+  try {
+    result = strictSupabaseMode
+      ? await service.fetchPeople([], { preferSupabaseOnly: true })
+      : await service.fetchPeople([]);
+  } catch (error) {
+    if (strictSupabaseMode) {
+      showMessage(error?.message || "Не удалось загрузить список из Supabase.", "error");
+      result = { people: [], source: "supabase-error" };
+    } else {
+      throw error;
+    }
+  }
   const selectedCategory = categoryInput.value || getDefaultCategoryId();
   state.people = result.people.sort((a, b) => a.birthYear - b.birthYear);
   mergeCategoriesFromPeople(state.people);
   fillCategorySelect(selectedCategory);
-  state.source = result.source;
+  state.source = strictSupabaseMode ? (result.source === "supabase-error" ? "supabase-error" : "supabase") : result.source;
   setStorageMode(state.source);
   renderTable();
   renderCategoryManager();
@@ -1017,6 +1079,46 @@ function bindEvents() {
     });
   }
 
+  if (syncSeedButton) {
+    syncSeedButton.addEventListener("click", async () => {
+      if (isUiLocked()) return;
+      if (!canMutate()) {
+        showMessage("Для синхронизации базового набора нужен вход администратора.", "error");
+        return;
+      }
+      if (!(typeof service?.isSupabaseConfigured === "function" && service.isSupabaseConfigured())) {
+        showMessage("Синхронизация доступна только при подключенном Supabase.", "error");
+        return;
+      }
+      if (!SEED_PEOPLE.length) {
+        showMessage("Базовый набор персон не найден.", "error");
+        return;
+      }
+      if (!service?.syncSeedPeople) {
+        showMessage("Сервис синхронизации недоступен.", "error");
+        return;
+      }
+
+      const shouldContinue = confirm(
+        `Добавить в БД недостающих персон из базового набора (${SEED_PEOPLE.length} записей)?`
+      );
+      if (!shouldContinue) return;
+
+      try {
+        setSyncSeedPending(true);
+        const result = await service.syncSeedPeople(SEED_PEOPLE);
+        await loadPeople();
+        showMessage(
+          `Синхронизация завершена: добавлено ${result.inserted}, уже были в БД ${result.existing}.`
+        );
+      } catch (error) {
+        showMessage(error.message || "Не удалось синхронизировать базовый набор.", "error");
+      } finally {
+        setSyncSeedPending(false);
+      }
+    });
+  }
+
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (isUiLocked()) return;
@@ -1044,7 +1146,14 @@ function bindEvents() {
   });
 
   logoutButton.addEventListener("click", async () => {
-    if (state.logoutPending || state.savePending || state.categoryPending || state.photoUploadPending) return;
+    if (
+      state.logoutPending ||
+      state.savePending ||
+      state.categoryPending ||
+      state.photoUploadPending ||
+      state.syncSeedPending
+    )
+      return;
     try {
       setLogoutPending(true);
       await service.logout();
@@ -1060,7 +1169,14 @@ function bindEvents() {
 
   personForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (state.savePending || state.logoutPending || state.categoryPending || state.photoUploadPending) return;
+    if (
+      state.savePending ||
+      state.logoutPending ||
+      state.categoryPending ||
+      state.photoUploadPending ||
+      state.syncSeedPending
+    )
+      return;
 
     if (!canMutate()) {
       showMessage("Для сохранения в Supabase требуется вход администратора.", "error");
