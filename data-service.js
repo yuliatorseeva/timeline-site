@@ -2,9 +2,11 @@
 
 (function initTimelineDataService(global) {
   const STORAGE_KEY = "timeline_people_cache_v1";
+  const PHOTO_OVERRIDES_STORAGE_KEY = "timeline_photo_overrides_v1";
   const DEFAULT_TABLE_NAME = "people";
   const CURRENT_YEAR = new Date().getFullYear();
   let cachedClient = null;
+  let hasPhotoUrlColumn = null;
 
   function getConfig() {
     return global.SUPABASE_CONFIG || {};
@@ -32,8 +34,18 @@
     return String(text || "")
       .trim()
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
       .replace(/^-+|-+$/g, "");
+  }
+
+  function extractSurname(name) {
+    const cleaned = String(name || "")
+      .replace(/[.,;:!?()"'`«»]/g, " ")
+      .trim();
+    if (!cleaned) return "";
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (!parts.length) return "";
+    return parts[parts.length - 1];
   }
 
   function parseAchievements(value) {
@@ -64,10 +76,82 @@
     return Number.isFinite(parsed) ? parsed : fallback;
   }
 
+  function parsePhotoUrl(value) {
+    const text = String(value || "").trim();
+    return text || undefined;
+  }
+
+  function readPhotoOverrides() {
+    try {
+      const raw = global.localStorage.getItem(PHOTO_OVERRIDES_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const next = {};
+      Object.entries(parsed).forEach(([id, url]) => {
+        const cleanId = String(id || "").trim();
+        const cleanUrl = parsePhotoUrl(url);
+        if (!cleanId || !cleanUrl) return;
+        next[cleanId] = cleanUrl;
+      });
+      return next;
+    } catch {
+      return {};
+    }
+  }
+
+  function writePhotoOverrides(overrides) {
+    try {
+      global.localStorage.setItem(PHOTO_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides || {}));
+    } catch {
+      // Ignore quota errors.
+    }
+  }
+
+  function applyPhotoOverrides(people) {
+    const overrides = readPhotoOverrides();
+    if (!overrides || Object.keys(overrides).length === 0) return people;
+    return people.map((person) => {
+      const override = overrides[person.id];
+      if (!override || person.photoUrl) return person;
+      return { ...person, photoUrl: override };
+    });
+  }
+
+  function syncPhotoOverride(person) {
+    const id = String(person?.id || "").trim();
+    if (!id) return;
+    const overrides = readPhotoOverrides();
+    if (person.photoUrl) {
+      overrides[id] = person.photoUrl;
+    } else {
+      delete overrides[id];
+    }
+    writePhotoOverrides(overrides);
+  }
+
+  function removePhotoOverride(id) {
+    const key = String(id || "").trim();
+    if (!key) return;
+    const overrides = readPhotoOverrides();
+    if (!(key in overrides)) return;
+    delete overrides[key];
+    writePhotoOverrides(overrides);
+  }
+
+  function isMissingPhotoUrlColumnError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    const details = String(error?.details || "").toLowerCase();
+    const hint = String(error?.hint || "").toLowerCase();
+    const text = `${message} ${details} ${hint}`;
+    return text.includes("photo_url") && (text.includes("column") || text.includes("schema cache"));
+  }
+
   function normalizePerson(rawInput) {
     const raw = rawInput || {};
     const initialId = String(raw.id || raw.slug || "").trim();
-    const id = initialId || slugify(raw.name) || `person-${Date.now()}-${Math.round(Math.random() * 9999)}`;
+    const surnameBase = extractSurname(raw.name);
+    const id = initialId || slugify(surnameBase || raw.name) || `person-${Date.now()}-${Math.round(Math.random() * 9999)}`;
     const birthYear = parseNumber(raw.birthYear ?? raw.birth_year, null);
     if (!Number.isFinite(birthYear)) return null;
 
@@ -96,12 +180,13 @@
       deathDate,
       summary: String(raw.summary || "").trim(),
       achievements,
-      wikiTitle: String(raw.wikiTitle || raw.wiki_title || "").trim() || undefined
+      wikiTitle: String(raw.wikiTitle || raw.wiki_title || "").trim() || undefined,
+      photoUrl: parsePhotoUrl(raw.photoUrl ?? raw.photo_url ?? raw.portraitUrl ?? raw.portrait_url)
     };
   }
 
   function dbRowFromPerson(person) {
-    return {
+    const row = {
       slug: person.id,
       name: person.name,
       category: person.category,
@@ -114,6 +199,10 @@
       wiki_title: person.wikiTitle || null,
       is_living: person.deathDate === "по н.в."
     };
+    if (hasPhotoUrlColumn !== false) {
+      row.photo_url = person.photoUrl || null;
+    }
+    return row;
   }
 
   function personFromDbRow(row) {
@@ -128,6 +217,7 @@
       summary: row.summary,
       achievements: row.achievements,
       wiki_title: row.wiki_title,
+      photo_url: row.photo_url,
       is_living: row.is_living
     });
   }
@@ -171,8 +261,8 @@
 
   async function fetchPeople(seedPeople) {
     const seed = Array.isArray(seedPeople) ? seedPeople.map(normalizePerson).filter(Boolean) : [];
-    const local = readLocalPeople();
-    let people = local.length ? local : seed;
+    const local = applyPhotoOverrides(readLocalPeople());
+    let people = local.length ? local : applyPhotoOverrides(seed);
     let source = local.length ? "local" : "seed";
     const client = getSupabaseClient();
 
@@ -188,7 +278,8 @@
         .order("birth_year", { ascending: true });
 
       if (error) throw error;
-      const fetched = Array.isArray(data) ? data.map(personFromDbRow).filter(Boolean) : [];
+      const fetchedRaw = Array.isArray(data) ? data.map(personFromDbRow).filter(Boolean) : [];
+      const fetched = applyPhotoOverrides(fetchedRaw);
       if (fetched.length > 0) {
         people = fetched;
         source = "supabase";
@@ -215,24 +306,33 @@
     }
 
     const client = getSupabaseClient();
-    const local = readLocalPeople();
+    const local = applyPhotoOverrides(readLocalPeople());
 
     if (!client) {
       normalized.id = ensureUniqueId(local, normalized.id);
       const next = [...local, normalized].sort((a, b) => a.birthYear - b.birthYear);
       writeLocalPeople(next);
+      syncPhotoOverride(normalized);
       return normalized;
     }
 
     await ensureAdminSession(client);
-    const payload = dbRowFromPerson(normalized);
-    const { data, error } = await client.from(getTableName()).insert(payload).select("*").single();
-    if (error) throw error;
+    let payload = dbRowFromPerson(normalized);
+    let response = await client.from(getTableName()).insert(payload).select("*").single();
+    if (response.error && isMissingPhotoUrlColumnError(response.error)) {
+      hasPhotoUrlColumn = false;
+      payload = dbRowFromPerson(normalized);
+      response = await client.from(getTableName()).insert(payload).select("*").single();
+    }
+    if (response.error) throw response.error;
+    if (hasPhotoUrlColumn !== false) hasPhotoUrlColumn = true;
 
-    const saved = personFromDbRow(data);
-    const merged = [...local.filter((item) => item.id !== saved.id), saved].sort((a, b) => a.birthYear - b.birthYear);
+    const saved = personFromDbRow(response.data);
+    const finalSaved = saved.photoUrl ? saved : { ...saved, photoUrl: normalized.photoUrl };
+    syncPhotoOverride(finalSaved);
+    const merged = [...local.filter((item) => item.id !== finalSaved.id), finalSaved].sort((a, b) => a.birthYear - b.birthYear);
     writeLocalPeople(merged);
-    return saved;
+    return finalSaved;
   }
 
   async function updatePerson(originalId, rawPerson) {
@@ -240,37 +340,52 @@
     if (!normalized || !originalId) throw new Error("Не удалось обновить запись.");
 
     const client = getSupabaseClient();
-    const local = readLocalPeople();
+    const local = applyPhotoOverrides(readLocalPeople());
 
     if (!client) {
       const next = local.map((item) => (item.id === originalId ? { ...normalized } : item));
       writeLocalPeople(next);
+      syncPhotoOverride(normalized);
       return normalized;
     }
 
     await ensureAdminSession(client);
-    const payload = dbRowFromPerson(normalized);
-    const { data, error } = await client
+    let payload = dbRowFromPerson(normalized);
+    let response = await client
       .from(getTableName())
       .update(payload)
       .eq("slug", originalId)
       .select("*")
       .single();
-    if (error) throw error;
+    if (response.error && isMissingPhotoUrlColumnError(response.error)) {
+      hasPhotoUrlColumn = false;
+      payload = dbRowFromPerson(normalized);
+      response = await client
+        .from(getTableName())
+        .update(payload)
+        .eq("slug", originalId)
+        .select("*")
+        .single();
+    }
+    if (response.error) throw response.error;
+    if (hasPhotoUrlColumn !== false) hasPhotoUrlColumn = true;
 
-    const saved = personFromDbRow(data);
-    const merged = [...local.filter((item) => item.id !== originalId), saved].sort((a, b) => a.birthYear - b.birthYear);
+    const saved = personFromDbRow(response.data);
+    const finalSaved = saved.photoUrl ? saved : { ...saved, photoUrl: normalized.photoUrl };
+    syncPhotoOverride(finalSaved);
+    const merged = [...local.filter((item) => item.id !== originalId), finalSaved].sort((a, b) => a.birthYear - b.birthYear);
     writeLocalPeople(merged);
-    return saved;
+    return finalSaved;
   }
 
   async function deletePerson(id) {
     if (!id) throw new Error("Не указан id персоны.");
     const client = getSupabaseClient();
-    const local = readLocalPeople();
+    const local = applyPhotoOverrides(readLocalPeople());
 
     if (!client) {
       writeLocalPeople(local.filter((person) => person.id !== id));
+      removePhotoOverride(id);
       return;
     }
 
@@ -278,6 +393,7 @@
     const { error } = await client.from(getTableName()).delete().eq("slug", id);
     if (error) throw error;
     writeLocalPeople(local.filter((person) => person.id !== id));
+    removePhotoOverride(id);
   }
 
   async function login(email, password) {

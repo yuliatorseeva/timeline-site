@@ -9,17 +9,36 @@
       content="Интерактивная временная шкала ученых и известных людей с датами жизни и ключевыми достижениями."
     />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+      defer
+    ></script>
     <script src="./supabase-config.js" defer></script>
     <script src="./data-service.js" defer></script>
     <script src="./app.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#timeline-region">Перейти к шкале времени</a>
-    <div class="bg-grid parallax-layer" aria-hidden="true" data-parallax-depth="0.18"></div>
-    <div class="bg-shape bg-shape-one parallax-layer" aria-hidden="true" data-parallax-depth="1.25"></div>
-    <div class="bg-shape bg-shape-two parallax-layer" aria-hidden="true" data-parallax-depth="-0.95"></div>
-    <div class="bg-shape bg-shape-three parallax-layer" aria-hidden="true" data-parallax-depth="0.65"></div>
+    <div
+      class="bg-grid parallax-layer"
+      aria-hidden="true"
+      data-parallax-depth="0.18"
+    ></div>
+    <div
+      class="bg-shape bg-shape-one parallax-layer"
+      aria-hidden="true"
+      data-parallax-depth="1.25"
+    ></div>
+    <div
+      class="bg-shape bg-shape-two parallax-layer"
+      aria-hidden="true"
+      data-parallax-depth="-0.95"
+    ></div>
+    <div
+      class="bg-shape bg-shape-three parallax-layer"
+      aria-hidden="true"
+      data-parallax-depth="0.65"
+    ></div>
 
     <header class="hero">
       <p class="eyebrow">История в одном экране</p>
@@ -52,10 +71,6 @@
 
         <p class="stats">
           Показано персон: <strong id="results-count">0</strong>
-          <span class="note"
-            >База демонстрационная: можно дополнять в файле `app.js`.</span
-          >
-          <span class="note" id="data-source-note"></span>
         </p>
       </section>
 
@@ -87,17 +102,31 @@
               </label>
             </div>
 
-            <div class="era-pills" id="era-pills" aria-label="Переход по эпохам"></div>
+            <div
+              class="era-pills"
+              id="era-pills"
+              aria-label="Переход по эпохам"
+            ></div>
             <div class="legend" id="legend"></div>
-            <p class="timeline-readout" id="timeline-readout" aria-live="polite"></p>
+            <p
+              class="timeline-readout"
+              id="timeline-readout"
+              aria-live="polite"
+            ></p>
 
             <div class="timeline-shell">
               <div class="timeline-viewport" id="timeline-viewport">
                 <div class="axis" id="timeline-axis" aria-hidden="true"></div>
                 <div class="lanes" id="timeline-lanes" role="list"></div>
               </div>
-              <div class="timeline-fade timeline-fade-left" aria-hidden="true"></div>
-              <div class="timeline-fade timeline-fade-right" aria-hidden="true"></div>
+              <div
+                class="timeline-fade timeline-fade-left"
+                aria-hidden="true"
+              ></div>
+              <div
+                class="timeline-fade timeline-fade-right"
+                aria-hidden="true"
+              ></div>
             </div>
             <p class="hint">
               Подсказка: используйте <kbd>Shift</kbd> + колесо мыши или тачпад

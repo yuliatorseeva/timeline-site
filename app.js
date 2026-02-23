@@ -1,6 +1,6 @@
 "use strict";
 
-const CATEGORIES = {
+const BASE_CATEGORIES = {
   science: { label: "Наука", color: "#6cae95" },
   philosophy: { label: "Философия", color: "#c79743" },
   politics: { label: "Политика", color: "#d87a53" },
@@ -595,6 +595,19 @@ const ERA_PILLS = document.querySelector("#era-pills");
 const ZOOM_RANGE = document.querySelector("#zoom-range");
 const PARALLAX_LAYERS = Array.from(document.querySelectorAll(".parallax-layer"));
 const dataService = window.TimelineDataService || null;
+const CATEGORY_STORAGE_KEY = "timeline_categories_v1";
+const CATEGORY_COLOR_PALETTE = [
+  "#6cae95",
+  "#c79743",
+  "#d87a53",
+  "#8d9cd6",
+  "#58a0b4",
+  "#9a8bb7",
+  "#b9866a",
+  "#7aa1d2",
+  "#d08d5d",
+  "#79ab7b"
+];
 
 const BASE_ROW_HEIGHT = 56;
 const ROW_GAP_PX = 10;
@@ -610,6 +623,7 @@ const HAS_HOVER_MEDIA = window.matchMedia("(hover: hover)");
 
 const state = {
   people: [...PEOPLE],
+  categories: { ...BASE_CATEGORIES },
   query: "",
   category: "all",
   selectedId: null,
@@ -628,6 +642,88 @@ const ERAS = [
   { id: "twentieth", label: "XX век", year: 1930 },
   { id: "today", label: "Современность", year: 2005 }
 ];
+
+function slugifyCategory(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function labelFromCategoryKey(key) {
+  const normalized = String(key || "")
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!normalized) return "";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function readStoredCategories() {
+  try {
+    const raw = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    const categories = {};
+    Object.entries(parsed).forEach(([key, label]) => {
+      const normalizedKey = slugifyCategory(key);
+      const normalizedLabel = String(label || "").trim();
+      if (!normalizedKey || !normalizedLabel) return;
+      categories[normalizedKey] = normalizedLabel;
+    });
+    return categories;
+  } catch {
+    return {};
+  }
+}
+
+function pickCategoryColor(key) {
+  let hash = 0;
+  const input = String(key || "");
+  for (let i = 0; i < input.length; i += 1) {
+    hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % CATEGORY_COLOR_PALETTE.length;
+  return CATEGORY_COLOR_PALETTE[index];
+}
+
+function syncCategoryRegistry() {
+  const merged = { ...BASE_CATEGORIES };
+  const stored = readStoredCategories();
+
+  Object.entries(stored).forEach(([key, label]) => {
+    if (merged[key]) {
+      merged[key] = { ...merged[key], label };
+      return;
+    }
+    merged[key] = { label, color: pickCategoryColor(key) };
+  });
+
+  state.people.forEach((person) => {
+    const key = slugifyCategory(person?.category);
+    if (!key) return;
+    if (!merged[key]) {
+      merged[key] = { label: labelFromCategoryKey(key), color: pickCategoryColor(key) };
+    }
+  });
+
+  state.categories = merged;
+  if (state.category !== "all" && !state.categories[state.category]) {
+    state.category = "all";
+  }
+}
+
+function getCategoryMeta(category) {
+  const key = slugifyCategory(category);
+  if (state.categories[key]) return state.categories[key];
+  return {
+    label: labelFromCategoryKey(key || category),
+    color: pickCategoryColor(key || category)
+  };
+}
 
 function shouldReduceMotion() {
   return REDUCE_MOTION_MEDIA.matches;
@@ -669,7 +765,7 @@ function renderLegend() {
   });
   LEGEND.append(allButton);
 
-  Object.entries(CATEGORIES).forEach(([key, category]) => {
+  Object.entries(state.categories).forEach(([key, category]) => {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "legend-item legend-button";
@@ -731,11 +827,13 @@ function getFilteredPeople() {
   const query = state.query.trim().toLowerCase();
 
   return state.people.filter((person) => {
-    const categoryMatch = state.category === "all" || person.category === state.category;
+    const categoryKey = slugifyCategory(person.category);
+    const categoryMatch = state.category === "all" || categoryKey === state.category;
     if (!categoryMatch) return false;
     if (!query) return true;
 
-    const blob = [person.name, person.summary, person.achievements.join(" ")]
+    const categoryMeta = getCategoryMeta(categoryKey);
+    const blob = [person.name, categoryMeta.label, person.summary, person.achievements.join(" ")]
       .join(" ")
       .toLowerCase();
 
@@ -1073,6 +1171,12 @@ function extractThumbnail(queryData) {
 }
 
 async function fetchPortraitUrl(person) {
+  const manualUrl = String(person?.photoUrl || "").trim();
+  if (manualUrl) {
+    portraitCache.set(person.id, manualUrl);
+    return manualUrl;
+  }
+
   if (portraitCache.has(person.id)) {
     return portraitCache.get(person.id);
   }
@@ -1173,7 +1277,7 @@ function renderDetails(person) {
 
   const meta = document.createElement("p");
   meta.className = "details-meta";
-  const categoryLabel = CATEGORIES[person.category]?.label ?? person.category;
+  const categoryLabel = getCategoryMeta(person.category).label;
   meta.textContent = `${categoryLabel} · ${person.birthDate} - ${person.deathDate}`;
   heading.append(name, meta);
   head.append(avatar, heading);
@@ -1235,7 +1339,7 @@ function renderTimeline(people) {
     button.style.left = `${person.left}px`;
     button.style.width = `${person.width}px`;
     button.style.top = `${person.row * rowHeight}px`;
-    button.style.setProperty("--pill-color", CATEGORIES[person.category].color);
+    button.style.setProperty("--pill-color", getCategoryMeta(person.category).color);
     button.style.setProperty("--entry-delay", `${Math.min(index, 28) * 18}ms`);
     button.setAttribute("aria-label", `${person.name}, ${person.birthDate} - ${person.deathDate}`);
 
@@ -1329,6 +1433,8 @@ async function loadPeopleFromService() {
   }
 
   updateDataSourceNote();
+  syncCategoryRegistry();
+  renderLegend();
 }
 
 function syncActiveEraWithScroll() {
@@ -1467,7 +1573,6 @@ function initParallax() {
 async function init() {
   renderEraPills();
   setActiveEraPill("modern");
-  renderLegend();
   bindEvents();
   initParallax();
   await loadPeopleFromService();

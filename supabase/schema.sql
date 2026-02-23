@@ -12,10 +12,14 @@ create table if not exists public.people (
   summary text not null,
   achievements jsonb not null default '[]'::jsonb,
   wiki_title text,
+  photo_url text,
   is_living boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.people
+add column if not exists photo_url text;
 
 create table if not exists public.admin_users (
   user_id uuid primary key references auth.users(id) on delete cascade,
