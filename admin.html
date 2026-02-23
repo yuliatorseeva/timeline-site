@@ -12,7 +12,6 @@
     ></script>
     <script src="./supabase-config.js" defer></script>
     <script src="./data-service.js" defer></script>
-    <script src="./people-seed.js" defer></script>
     <script src="./admin.js" defer></script>
   </head>
   <body>
@@ -69,13 +68,7 @@
       <section class="panel admin-editor" id="admin-editor">
         <div class="editor-header">
           <h2 id="editor-title">Добавить персону</h2>
-          <div class="editor-header-actions">
-            <button class="admin-btn secondary" id="sync-seed-btn" type="button">
-              <span class="btn-label">Синхронизировать базовый набор</span>
-              <span class="btn-spinner" aria-hidden="true"></span>
-            </button>
-            <span id="storage-mode" class="chip"></span>
-          </div>
+          <span id="storage-mode" class="chip"></span>
         </div>
 
         <form id="person-form" class="editor-grid">

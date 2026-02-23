@@ -10,7 +10,7 @@ const BASE_CATEGORIES = {
   psychology: { label: "Психология", color: "#b9866a" }
 };
 
-const PEOPLE = Array.isArray(window.TIMELINE_SEED_PEOPLE) ? window.TIMELINE_SEED_PEOPLE : [];
+const PEOPLE = [];
 
 const SEARCH_INPUT = document.querySelector("#search-input");
 const RESULTS_COUNT = document.querySelector("#results-count");
@@ -61,7 +61,7 @@ const state = {
   zoom: Number(ZOOM_RANGE?.value ?? 140),
   filteredPeople: [],
   layoutMetrics: null,
-  dataSource: "seed"
+  dataSource: "supabase"
 };
 
 const ERAS = [
@@ -834,16 +834,15 @@ function updateDataSourceNote() {
   const sourceMap = {
     supabase: "Источник данных: Supabase",
     "supabase-error": "Источник данных: Supabase (ошибка загрузки)",
-    local: "Источник данных: localStorage",
-    seed: "Источник данных: встроенный набор"
+    local: "Источник данных: localStorage"
   };
   DATA_SOURCE_NOTE.textContent = sourceMap[state.dataSource] || "";
 }
 
 async function loadPeopleFromService() {
   if (!dataService) {
-    state.people = [...PEOPLE];
-    state.dataSource = "seed";
+    state.people = [];
+    state.dataSource = "supabase-error";
     updateDataSourceNote();
     return;
   }
@@ -854,22 +853,17 @@ async function loadPeopleFromService() {
   try {
     const result = isSupabaseConfigured
       ? await dataService.fetchPeople([], { preferSupabaseOnly: true })
-      : await dataService.fetchPeople(PEOPLE);
+      : await dataService.fetchPeople([]);
     const loaded = Array.isArray(result.people) ? result.people : [];
-    if (!isSupabaseConfigured && !loaded.length) {
-      state.people = [...PEOPLE];
-      state.dataSource = "seed";
-    } else {
-      state.people = loaded;
-      state.dataSource = isSupabaseConfigured ? "supabase" : result.source || "seed";
-    }
+    state.people = loaded;
+    state.dataSource = isSupabaseConfigured ? "supabase" : result.source || "local";
   } catch {
     if (isSupabaseConfigured) {
       state.people = [];
       state.dataSource = "supabase-error";
     } else {
-      state.people = [...PEOPLE];
-      state.dataSource = "seed";
+      state.people = [];
+      state.dataSource = "local";
     }
   }
 

@@ -347,12 +347,11 @@
     return data.session;
   }
 
-  async function fetchPeople(seedPeople, options = {}) {
+  async function fetchPeople(_seedPeople, options = {}) {
     const preferSupabaseOnly = Boolean(options?.preferSupabaseOnly);
-    const seed = Array.isArray(seedPeople) ? seedPeople.map(normalizePerson).filter(Boolean) : [];
     const local = applyPhotoOverrides(readLocalPeople());
-    let people = local.length ? local : applyPhotoOverrides(seed);
-    let source = local.length ? "local" : "seed";
+    let people = local;
+    let source = "local";
     const client = getSupabaseClient();
 
     if (!client) {
@@ -398,58 +397,6 @@
   async function listPeople() {
     const result = await fetchPeople([]);
     return result.people;
-  }
-
-  async function syncSeedPeople(seedPeople) {
-    const client = getSupabaseClient();
-    if (!client) throw new Error("Supabase не настроен.");
-    await ensureAdminSession(client);
-
-    const normalizedSeed = Array.isArray(seedPeople) ? seedPeople.map(normalizePerson).filter(Boolean) : [];
-    if (!normalizedSeed.length) {
-      return { total: 0, inserted: 0, existing: 0 };
-    }
-
-    const tableName = getTableName();
-    const existingResponse = await withTimeout(
-      client.from(tableName).select("slug"),
-      "Не удалось проверить существующие записи (таймаут)."
-    );
-    if (existingResponse.error) throw toFriendlyDbError(existingResponse.error);
-
-    const existingSet = new Set(
-      (Array.isArray(existingResponse.data) ? existingResponse.data : [])
-        .map((row) => String(row?.slug || "").trim())
-        .filter(Boolean)
-    );
-
-    const missingPeople = normalizedSeed.filter((person) => !existingSet.has(person.id));
-    if (!missingPeople.length) {
-      return { total: normalizedSeed.length, inserted: 0, existing: normalizedSeed.length };
-    }
-
-    let insertRows = missingPeople.map(dbRowFromPerson);
-    let insertResponse = await withTimeout(
-      client.from(tableName).insert(insertRows).select("slug"),
-      "Не удалось синхронизировать базовый набор (таймаут)."
-    );
-    if (insertResponse.error && isMissingPhotoUrlColumnError(insertResponse.error)) {
-      hasPhotoUrlColumn = false;
-      insertRows = missingPeople.map(dbRowFromPerson);
-      insertResponse = await withTimeout(
-        client.from(tableName).insert(insertRows).select("slug"),
-        "Не удалось синхронизировать базовый набор после повторной попытки (таймаут)."
-      );
-    }
-    if (insertResponse.error) throw toFriendlyDbError(insertResponse.error);
-    if (hasPhotoUrlColumn !== false) hasPhotoUrlColumn = true;
-
-    const inserted = Array.isArray(insertResponse.data) ? insertResponse.data.length : missingPeople.length;
-    return {
-      total: normalizedSeed.length,
-      inserted,
-      existing: normalizedSeed.length - missingPeople.length
-    };
   }
 
   async function uploadPhoto(file, personSlugHint = "person") {
@@ -651,7 +598,6 @@
     getTableName,
     fetchPeople,
     listPeople,
-    syncSeedPeople,
     uploadPhoto,
     createPerson,
     updatePerson,
