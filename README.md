@@ -4,15 +4,15 @@
 
 ## Что теперь есть
 
-- `/Users/torseevaulia/scale/index.html` — публичная шкала.
-- `/Users/torseevaulia/scale/admin.html` — админка (добавить/изменить/удалить персон).
+- `/scale/index.html` — публичная шкала.
+- `/scale/admin.html` — админка (добавить/изменить/удалить персон).
 - `Supabase` интеграция для хранения данных в интернете.
 - Fallback в `localStorage`, если Supabase не настроен.
 
 ## Локальный запуск
 
-1. Откройте `/Users/torseevaulia/scale/index.html`.
-2. Для управления персоналиями откройте `/Users/torseevaulia/scale/admin.html`.
+1. Откройте `/scale/index.html`.
+2. Для управления персоналиями откройте `/scale/admin.html`.
 
 ## Бесплатный деплой
 
@@ -48,13 +48,13 @@
 
 1. Создайте проект в [Supabase](https://supabase.com/).
 2. В SQL Editor выполните файл:
-   - `/Users/torseevaulia/scale/supabase/schema.sql`
+   - `/scale/supabase/schema.sql`
 3. В Supabase Auth создайте администратора (email/password).
 4. Добавьте этого пользователя в `public.admin_users`:
    - `insert into public.admin_users (user_id) values ('UUID_ПОЛЬЗОВАТЕЛЯ');`
 5. Скопируйте:
-   - `/Users/torseevaulia/scale/supabase-config.example.js`
-   - в `/Users/torseevaulia/scale/supabase-config.js`
+   - `/scale/supabase-config.example.js`
+   - в `/scale/supabase-config.js`
 6. Заполните `url` и `anonKey`.
 
 После этого:
@@ -82,7 +82,7 @@
 
 ## Файлы интеграции
 
-- `/Users/torseevaulia/scale/data-service.js` — общий слой данных (Supabase + localStorage).
-- `/Users/torseevaulia/scale/supabase/schema.sql` — таблицы и политики.
-- `/Users/torseevaulia/scale/admin.js` — логика админки.
-- `/Users/torseevaulia/scale/admin.css` — стили админки.
+- `/scale/data-service.js` — общий слой данных (Supabase + localStorage).
+- `/scale/supabase/schema.sql` — таблицы и политики.
+- `/scale/admin.js` — логика админки.
+- `/scale/admin.css` — стили админки.
