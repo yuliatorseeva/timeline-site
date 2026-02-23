@@ -44,6 +44,15 @@
       .replace(/^-+|-+$/g, "");
   }
 
+  function toStorageSafeSegment(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
   function withTimeout(promise, message, timeoutMs = REQUEST_TIMEOUT_MS) {
     let timeoutId = null;
     const timeoutPromise = new Promise((_, reject) => {
@@ -400,7 +409,7 @@
     await ensureAdminSession(client);
     const bucket = getPhotoBucketName();
     const extension = getFileExtension(file.name, file.type);
-    const slug = slugify(personSlugHint) || "person";
+    const slug = toStorageSafeSegment(personSlugHint) || "person";
     const randomPart = Math.random().toString(36).slice(2, 8);
     const path = `${slug}/${Date.now()}-${randomPart}.${extension}`;
 
