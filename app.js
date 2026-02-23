@@ -17,6 +17,9 @@ const RESULTS_COUNT = document.querySelector("#results-count");
 const AXIS = document.querySelector("#timeline-axis");
 const LANES = document.querySelector("#timeline-lanes");
 const DETAILS = document.querySelector("#person-details");
+const PERSON_MODAL = document.querySelector("#person-modal");
+const PERSON_MODAL_CLOSE = document.querySelector("#person-modal-close");
+const PERSON_MODAL_BACKDROP = document.querySelector("#person-modal-backdrop");
 const LEGEND = document.querySelector("#legend");
 const TIMELINE_READOUT = document.querySelector("#timeline-readout");
 const DATA_SOURCE_NOTE = document.querySelector("#data-source-note");
@@ -58,6 +61,7 @@ const state = {
   category: "all",
   selectedId: null,
   detailsRequestId: 0,
+  isDetailsModalOpen: false,
   zoom: Number(ZOOM_RANGE?.value ?? 140),
   filteredPeople: [],
   layoutMetrics: null,
@@ -582,6 +586,20 @@ function setActiveItem() {
   });
 }
 
+function openDetailsModal() {
+  if (!PERSON_MODAL) return;
+  PERSON_MODAL.hidden = false;
+  state.isDetailsModalOpen = true;
+  document.body.classList.add("modal-open");
+}
+
+function closeDetailsModal() {
+  if (!PERSON_MODAL) return;
+  PERSON_MODAL.hidden = true;
+  state.isDetailsModalOpen = false;
+  document.body.classList.remove("modal-open");
+}
+
 function getInitials(name) {
   return name
     .split(" ")
@@ -749,7 +767,9 @@ function renderTimeline(people) {
     empty.className = "empty-state";
     empty.textContent = "По этим фильтрам персон не найдено.";
     LANES.append(empty);
+    state.selectedId = null;
     renderDetails(null);
+    closeDetailsModal();
     return;
   }
 
@@ -786,6 +806,7 @@ function renderTimeline(people) {
       state.selectedId = person.id;
       setActiveItem();
       renderDetails(person);
+      openDetailsModal();
       focusPersonInViewport(person);
     });
     LANES.append(button);
@@ -800,21 +821,14 @@ function renderTimeline(people) {
   });
 
   const selectedExists = items.some((person) => person.id === state.selectedId);
-  if (!selectedExists) {
-    state.selectedId = items[0].id;
-  }
-
+  if (!selectedExists) state.selectedId = null;
   setActiveItem();
-  const selectedPerson = items.find((person) => person.id === state.selectedId);
-  renderDetails(selectedPerson);
-
-  if (selectedPerson) {
-    if (shouldReduceMotion()) {
-      focusPersonInViewport(selectedPerson);
+  if (state.isDetailsModalOpen) {
+    const selectedPerson = items.find((person) => person.id === state.selectedId);
+    if (selectedPerson) {
+      renderDetails(selectedPerson);
     } else {
-      requestAnimationFrame(() => {
-        focusPersonInViewport(selectedPerson);
-      });
+      closeDetailsModal();
     }
   }
 }
@@ -928,6 +942,20 @@ function bindEvents() {
     },
     { passive: true }
   );
+
+  PERSON_MODAL_CLOSE?.addEventListener("click", () => {
+    closeDetailsModal();
+  });
+
+  PERSON_MODAL_BACKDROP?.addEventListener("click", () => {
+    closeDetailsModal();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.isDetailsModalOpen) {
+      closeDetailsModal();
+    }
+  });
 }
 
 function initParallax() {

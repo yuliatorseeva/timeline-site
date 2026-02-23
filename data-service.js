@@ -6,6 +6,46 @@
   const DEFAULT_TABLE_NAME = "people";
   const REQUEST_TIMEOUT_MS = 15000;
   const CURRENT_YEAR = new Date().getFullYear();
+  const CYRILLIC_TO_LATIN_MAP = {
+    а: "a",
+    б: "b",
+    в: "v",
+    г: "g",
+    д: "d",
+    е: "e",
+    ё: "yo",
+    ж: "zh",
+    з: "z",
+    и: "i",
+    й: "y",
+    к: "k",
+    л: "l",
+    м: "m",
+    н: "n",
+    о: "o",
+    п: "p",
+    р: "r",
+    с: "s",
+    т: "t",
+    у: "u",
+    ф: "f",
+    х: "kh",
+    ц: "ts",
+    ч: "ch",
+    ш: "sh",
+    щ: "shch",
+    ъ: "",
+    ы: "y",
+    ь: "",
+    э: "e",
+    ю: "yu",
+    я: "ya",
+    і: "i",
+    ї: "yi",
+    є: "ye",
+    ґ: "g",
+    ў: "u"
+  };
   let cachedClient = null;
   let hasPhotoUrlColumn = null;
 
@@ -36,21 +76,30 @@
     return cachedClient;
   }
 
+  function transliterateToLatin(value) {
+    return String(value || "")
+      .split("")
+      .map((char) => {
+        const lower = char.toLowerCase();
+        return Object.prototype.hasOwnProperty.call(CYRILLIC_TO_LATIN_MAP, lower)
+          ? CYRILLIC_TO_LATIN_MAP[lower]
+          : char;
+      })
+      .join("");
+  }
+
   function slugify(text) {
-    return String(text || "")
+    return transliterateToLatin(text)
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
   }
 
   function toStorageSafeSegment(value) {
-    return String(value || "")
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+    return slugify(value);
   }
 
   function withTimeout(promise, message, timeoutMs = REQUEST_TIMEOUT_MS) {

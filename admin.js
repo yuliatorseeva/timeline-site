@@ -10,6 +10,46 @@ const BASE_CATEGORIES = {
   psychology: "Психология"
 };
 const CATEGORY_STORAGE_KEY = "timeline_categories_v1";
+const CYRILLIC_TO_LATIN_MAP = {
+  а: "a",
+  б: "b",
+  в: "v",
+  г: "g",
+  д: "d",
+  е: "e",
+  ё: "yo",
+  ж: "zh",
+  з: "z",
+  и: "i",
+  й: "y",
+  к: "k",
+  л: "l",
+  м: "m",
+  н: "n",
+  о: "o",
+  п: "p",
+  р: "r",
+  с: "s",
+  т: "t",
+  у: "u",
+  ф: "f",
+  х: "kh",
+  ц: "ts",
+  ч: "ch",
+  ш: "sh",
+  щ: "shch",
+  ъ: "",
+  ы: "y",
+  ь: "",
+  э: "e",
+  ю: "yu",
+  я: "ya",
+  і: "i",
+  ї: "yi",
+  є: "ye",
+  ґ: "g",
+  ў: "u"
+};
 
 const CURRENT_YEAR = new Date().getFullYear();
 const service = window.TimelineDataService;
@@ -227,10 +267,22 @@ async function uploadSelectedPhotoFile() {
 }
 
 function slugify(text) {
-  return String(text || "")
+  const transliterated = String(text || "")
+    .split("")
+    .map((char) => {
+      const lower = char.toLowerCase();
+      return Object.prototype.hasOwnProperty.call(CYRILLIC_TO_LATIN_MAP, lower)
+        ? CYRILLIC_TO_LATIN_MAP[lower]
+        : char;
+    })
+    .join("");
+
+  return transliterated
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 

@@ -79,69 +79,92 @@
         id="timeline-region"
         aria-label="Интерактивная шкала времени"
       >
-        <div class="timeline-layout">
-          <div class="timeline-main">
-            <div class="timeline-header">
-              <div class="timeline-headline">
-                <h2>Шкала Эпох</h2>
-                <p>
-                  Горизонтальная лента показывает, кто жил одновременно.
-                  Выберите персону или перейдите к нужной эпохе.
-                </p>
-              </div>
-              <label class="zoom-control" for="zoom-range">
-                <span>Масштаб</span>
-                <input
-                  id="zoom-range"
-                  type="range"
-                  min="90"
-                  max="280"
-                  step="10"
-                  value="140"
-                />
-              </label>
+        <div class="timeline-main">
+          <div class="timeline-header">
+            <div class="timeline-headline">
+              <h2>Шкала Эпох</h2>
+              <p>
+                Горизонтальная лента показывает, кто жил одновременно.
+                Выберите персону или перейдите к нужной эпохе.
+              </p>
             </div>
-
-            <div
-              class="era-pills"
-              id="era-pills"
-              aria-label="Переход по эпохам"
-            ></div>
-            <div class="legend" id="legend"></div>
-            <p
-              class="timeline-readout"
-              id="timeline-readout"
-              aria-live="polite"
-            ></p>
-
-            <div class="timeline-shell">
-              <div class="timeline-viewport" id="timeline-viewport">
-                <div class="axis" id="timeline-axis" aria-hidden="true"></div>
-                <div class="lanes" id="timeline-lanes" role="list"></div>
-              </div>
-              <div
-                class="timeline-fade timeline-fade-left"
-                aria-hidden="true"
-              ></div>
-              <div
-                class="timeline-fade timeline-fade-right"
-                aria-hidden="true"
-              ></div>
-            </div>
-            <p class="hint">
-              Подсказка: используйте <kbd>Shift</kbd> + колесо мыши или тачпад
-              для горизонтальной прокрутки.
-            </p>
+            <label class="zoom-control" for="zoom-range">
+              <span>Масштаб</span>
+              <input
+                id="zoom-range"
+                type="range"
+                min="90"
+                max="280"
+                step="10"
+                value="140"
+              />
+            </label>
           </div>
 
-          <aside class="details-panel" aria-live="polite">
-            <h2 class="details-title">Информация о персоне</h2>
-            <article id="person-details" class="details-card empty">
-              <p>Выберите человека на временной шкале.</p>
-            </article>
-          </aside>
+          <div
+            class="era-pills"
+            id="era-pills"
+            aria-label="Переход по эпохам"
+          ></div>
+          <div class="legend" id="legend"></div>
+          <p
+            class="timeline-readout"
+            id="timeline-readout"
+            aria-live="polite"
+          ></p>
+
+          <div class="timeline-shell">
+            <div class="timeline-viewport" id="timeline-viewport">
+              <div class="axis" id="timeline-axis" aria-hidden="true"></div>
+              <div class="lanes" id="timeline-lanes" role="list"></div>
+            </div>
+            <div
+              class="timeline-fade timeline-fade-left"
+              aria-hidden="true"
+            ></div>
+            <div
+              class="timeline-fade timeline-fade-right"
+              aria-hidden="true"
+            ></div>
+          </div>
+          <p class="hint">
+            Подсказка: используйте <kbd>Shift</kbd> + колесо мыши или тачпад
+            для горизонтальной прокрутки.
+          </p>
         </div>
       </section>
     </main>
+
+    <div class="person-modal" id="person-modal" hidden>
+      <button
+        class="person-modal-backdrop"
+        id="person-modal-backdrop"
+        type="button"
+        aria-label="Закрыть карточку персоны"
+      ></button>
+      <section
+        class="person-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="person-modal-title"
+      >
+        <div class="person-modal-head">
+          <h2 id="person-modal-title" class="person-modal-title">
+            Информация о персоне
+          </h2>
+          <button
+            class="person-modal-close"
+            id="person-modal-close"
+            type="button"
+            aria-label="Закрыть"
+          >
+            Закрыть
+          </button>
+        </div>
+        <article id="person-details" class="details-card empty">
+          <p>Выберите человека на временной шкале.</p>
+        </article>
+      </section>
+    </div>
   </body>
 </html>
